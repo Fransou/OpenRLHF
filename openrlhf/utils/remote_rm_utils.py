@@ -1,6 +1,7 @@
 import time
 import ray
 import requests
+import torch
 
 from openrlhf.utils.logging_utils import init_logger
 
@@ -17,6 +18,11 @@ def request_api_wrapper(url, data, try_max_times=5):
             response = requests.post(url=url, json=data, headers=headers, timeout=180)
             response.raise_for_status()  # Raise an HTTPError for bad responses
             response = response.json()
+            # Transform r so that the list are replaced with tensors
+            response["rewards"] = torch.tensor(response["rewards"])
+            response["scores"] = torch.tensor(response["scores"])
+            for key in response["extra_logs"]:
+                response["extra_logs"][key] = torch.tensor(response["extra_logs"][key])
             return response
         except requests.RequestException as e:
             logger.info(f"Request error, please check: {e}")
@@ -78,11 +84,6 @@ class RemoteRewardModel:
                     prompts=prompts_list[start_idx:end_idx],
                     labels=labels_list[start_idx:end_idx],
                 )
-                # Transform r so that the list are replaced with tensors
-                r["rewards"] = torch.tensor(r["rewards"])
-                r["scores"] = torch.tensor(r["scores"])
-                for key in r["extra_logs"]:
-                    r["extra_logs"][key] = torch.tensor(r["extra_logs"][key])
                 r_refs.append(r)
 
         return ray.get(r_refs)
