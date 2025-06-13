@@ -78,6 +78,11 @@ class RemoteRewardModel:
                     prompts=prompts_list[start_idx:end_idx],
                     labels=labels_list[start_idx:end_idx],
                 )
+                # Transform r so that the list are replaced with tensors
+                r["rewards"] = torch.tensor(r["rewards"])
+                r["scores"] = torch.tensor(r["scores"])
+                for key in r["extra_logs"]:
+                    r["extra_logs"][key] = torch.tensor(r["extra_logs"][key])
                 r_refs.append(r)
 
         return ray.get(r_refs)
