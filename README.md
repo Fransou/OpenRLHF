@@ -96,16 +96,12 @@ sudo pip uninstall xgboost transformer_engine flash_attn pynvml -y
 # pip install
 pip install openrlhf
 
-# If you want to use vLLM acceleration (Install vLLM 0.9.0.1)
+# If you want to use vLLM acceleration (Install vLLM 0.9.1)
 pip install openrlhf[vllm]
 # latest vLLM is also supported
 pip install openrlhf[vllm_latest]
 # Install vLLM, ring-flash-attention and Liger-Kernel
 pip install openrlhf[vllm,ring,liger]
-
-# Install flash-attn 2.7.4.post1 for PyTorch 2.7
-# Example for Python 3.12, replace filename if using 3.10 or 3.11
-pip install https://github.com/OpenRLHF/flash-attn-2.7.4.post1-builds/releases/download/v0.1/flash_attn-2.7.4.post1+pt270cu128cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
 
 # pip install the latest version
 pip install git+https://github.com/OpenRLHF/OpenRLHF.git
@@ -117,7 +113,7 @@ pip install -e .
 ```
 
 > [!NOTE]
->We recommend using vLLM 0.9.0.1 or higher.
+>We recommend using vLLM 0.9.1 or higher.
 >We also provided the [Dockerfiles for vLLM](./dockerfile/) and [One-Click Installation Script of Nvidia-Docker](./examples/scripts/nvidia_docker_install.sh).
 
 ### Prepare Datasets
