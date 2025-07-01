@@ -36,6 +36,7 @@ class BasePPOTrainer(ABC):
         **generate_kwargs,
     ) -> None:
         super().__init__()
+        os.environ["WANDB_MODE"] = "offline"
 
         self.strategy = strategy
         self.args = strategy.args
@@ -84,20 +85,16 @@ class BasePPOTrainer(ABC):
         self._tensorboard = None
         self.generated_samples_table = None
         if self.strategy.args.use_wandb:
+            os.environ["WANDB_MODE"] = "offline"
             import wandb
-
+            wandb.require("legacy-service")
             self._wandb = wandb
-            if not wandb.api.api_key:
-                wandb.login(key=self.strategy.args.use_wandb)
-            wandb.init(
-                entity=self.strategy.args.wandb_org,
+            run = self._wandb.init(
                 project=self.strategy.args.wandb_project,
-                group=self.strategy.args.wandb_group,
                 name=self.strategy.args.wandb_run_name,
                 config=self.strategy.args.__dict__,
-                reinit=True,
+                mode="offline"
             )
-
             wandb.define_metric("train/global_step")
             wandb.define_metric("train/*", step_metric="train/global_step", step_sync=True)
             wandb.define_metric("eval/epoch")

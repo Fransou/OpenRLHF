@@ -169,7 +169,7 @@ class TrainingActor(BasePPOTrainer):
             self.tokenizer,
             remote_reward_model=self.remote_reward_model,
         )
-
+        os.environ["WANDB_MODE"] = "offline"
         self._init_wandb()
         self.eval_dataloader = None
 
