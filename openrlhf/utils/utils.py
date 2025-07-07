@@ -22,6 +22,20 @@ def get_strategy(args):
 
 
 def get_tokenizer(pretrain, model, padding_side="left", strategy=None, use_fast=True):
+    # Check if Multimodal
+    if hasattr(model, "get_multimodal_embeddings"):
+        # Use the AutoProcessor for multimodal models
+        from transformers import AutoProcessor
+        processor = AutoProcessor.from_pretrained(pretrain, trust_remote_code=True)
+        processor.tokenizer.padding_side = padding_side
+        if processor.tokenizer.pad_token is None:
+            processor.tokenizer.pad_token = processor.tokenizer.eos_token
+            processor.tokenizer.pad_token_id = processor.tokenizer.eos_token_id
+            if model is not None:
+                model.config.pad_token_id = processor.tokenizer.pad_token_id
+
+        return processor
+
     tokenizer = AutoTokenizer.from_pretrained(pretrain, trust_remote_code=True, use_fast=use_fast)
     tokenizer.padding_side = padding_side
     # NOTE: When enable vLLM, do not resize_token_embeddings, or the vocab size will mismatch with vLLM.
