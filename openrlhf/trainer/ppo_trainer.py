@@ -87,13 +87,14 @@ class BasePPOTrainer(ABC):
         if self.strategy.args.use_wandb:
             os.environ["WANDB_MODE"] = "offline"
             import wandb
+
             wandb.require("legacy-service")
             self._wandb = wandb
             run = self._wandb.init(
                 project=self.strategy.args.wandb_project,
                 name=self.strategy.args.wandb_run_name,
                 config=self.strategy.args.__dict__,
-                mode="offline"
+                mode="offline",
             )
             wandb.define_metric("train/global_step")
             wandb.define_metric("train/*", step_metric="train/global_step", step_sync=True)
@@ -121,7 +122,7 @@ class BasePPOTrainer(ABC):
             if self.strategy.args.deepspeed_enable_sleep:
                 ray.get(self.critic_model_group.async_run_method(method_name="reload_states"))
 
-            critic_status_ref = self.critic_model_group.async_run_method(method_name="fit")
+            critic_status_ref = self.critic_model_group.async_run_method(method_name="fit")  ##################
 
             if self.strategy.args.colocate_all_models or self.strategy.args.deepspeed_enable_sleep:
                 status.update(ray.get(critic_status_ref)[0])
@@ -133,7 +134,9 @@ class BasePPOTrainer(ABC):
             if self.strategy.args.deepspeed_enable_sleep:
                 self.actor_model_group.async_run_method(method_name="reload_states")
 
-            actor_status_ref = self.actor_model_group.async_run_method(method_name="fit", kl_ctl=self.kl_ctl.value)
+            actor_status_ref = self.actor_model_group.async_run_method(
+                method_name="fit", kl_ctl=self.kl_ctl.value
+            )  ############
             status.update(ray.get(actor_status_ref)[0])
 
             if self.strategy.args.deepspeed_enable_sleep:
@@ -226,11 +229,13 @@ class BasePPOTrainer(ABC):
         with torch.no_grad():
             # First collect all prompts and labels
             all_prompts = []
+            all_mm_data = []
             all_labels = []
             prompt_to_datasource = {}  # Dictionary to store mapping between prompts and their data sources
 
-            for datasources, prompts, labels in eval_dataloader:
+            for datasources, mm_data, pixel_values, labels in eval_dataloader:
                 all_prompts.extend(prompts)
+                all_mm_data.extend(mm_data)
                 all_labels.extend(labels)
                 # Create mapping for each prompt to its corresponding data source
                 for prompt, datasource in zip(prompts, datasources):
@@ -241,7 +246,7 @@ class BasePPOTrainer(ABC):
             generate_kwargs["temperature"] = temperature
             generate_kwargs["n_samples_per_prompt"] = n_samples_per_prompt
             samples_list = self.samples_generator.generate_samples(
-                all_prompts, all_labels, remote_reward_model=self.remote_reward_model, **generate_kwargs
+                all_prompts, all_mm_data, all_labels, remote_reward_model=self.remote_reward_model, **generate_kwargs
             )
 
             # duplicate prompts and labels for each sample
@@ -459,13 +464,12 @@ class PPOTrainer(BasePPOTrainer):
 
             filtered_samples = []
             number_of_samples = 0
-            for _, rand_prompts, labels in self.prompts_dataloader:
+            for _, rand_prompts, mm_data, labels in self.prompts_dataloader:
                 remote_reward_model = self.remote_reward_model if self.args.dynamic_filtering else None
                 rollout_samples = self.samples_generator.generate_samples(
-                    rand_prompts, labels, remote_reward_model=remote_reward_model, **self.generate_kwargs
+                    rand_prompts, mm_data, labels, remote_reward_model=remote_reward_model, **self.generate_kwargs
                 )
                 pbar.update()
-
                 # dynamic filtering
                 pass_rate = None
                 if self.args.dynamic_filtering:

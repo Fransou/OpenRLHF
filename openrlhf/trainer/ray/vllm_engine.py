@@ -3,6 +3,7 @@ import queue
 from typing import Any, List
 
 import ray
+import torch
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -90,14 +91,23 @@ class LLMRayActor(BaseLLMRayActor):
     def wake_up(self):
         self.llm.wake_up()
 
-    def add_requests(self, sampling_params, prompt_token_ids):
+    def add_requests(self, sampling_params, prompt_token_ids, mm_datas):
         """
         Process requests from rank0 and generate responses.
         Since only rank0 will send requests, we don't need to track actor ranks.
         """
         from vllm.inputs import TokensPrompt
 
-        requests = [TokensPrompt(prompt_token_ids=r) for r in prompt_token_ids]
+        if isinstance(prompt_token_ids, torch.Tensor):
+            prompt_token_ids = prompt_token_ids.tolist()
+
+        if not mm_datas:
+            requests = [TokensPrompt(prompt_token_ids=r) for r in prompt_token_ids]
+        else:
+            assert len(prompt_token_ids) == len(mm_datas), "prompt_token_ids and mm_datas must have the same length"
+            requests = [
+                TokensPrompt(prompt_token_ids=r, mm_data=mm_data) for r, mm_data in zip(prompt_token_ids, mm_datas)
+            ]
         responses = self.llm.generate(prompts=requests, sampling_params=sampling_params)
         self.response_queues.put(responses)
 

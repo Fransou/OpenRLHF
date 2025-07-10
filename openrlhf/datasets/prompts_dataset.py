@@ -2,20 +2,28 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 
-def preprocess_data(data, input_template=None, input_key="input", label_key=None, apply_chat_template=None) -> str:
+def preprocess_data(data, input_template=None, input_key="input", label_key=None, apply_chat_template=None):
     if apply_chat_template:
         chat = data[input_key]
         if isinstance(chat, str):
             chat = [{"role": "user", "content": chat}]
-        prompt = apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
+        chat = apply_chat_template(chat, tokenize=False, add_generation_prompt=True, return_dict=True)
+        if isinstance(chat, str):
+            prompt = chat
+            mm_data = [""] * len(chat)
+        else:
+            prompt = chat["text"]
+            mm_data = chat.get("mm_data", "")
+
     else:
+        raise NotImplementedError("apply_chat_template must be True to use this dataset.")
         prompt = data[input_key]
         if input_template:
             prompt = input_template.format(prompt)
 
     # for Reinforced Fine-tuning
     label = "" if label_key is None else data[label_key]
-    return prompt, label
+    return prompt, "|".join(mm_data), label
 
 
 class PromptDataset(Dataset):
@@ -49,11 +57,13 @@ class PromptDataset(Dataset):
             apply_chat_template = self.tokenizer.apply_chat_template
 
         self.prompts = []
+        self.mm_data = []
         self.labels = []
         self.datasources = []
         for data in tqdm(dataset, desc="Preprocessing data", disable=not self.strategy.is_rank_0()):
-            prompt, label = preprocess_data(data, input_template, input_key, label_key, apply_chat_template)
+            prompt, mm_data, label = preprocess_data(data, input_template, input_key, label_key, apply_chat_template)
             self.prompts.append(prompt)
+            self.mm_data.append(mm_data)
             self.labels.append(label)
             self.datasources.append(data.get("datasource", "default"))
 
@@ -62,4 +72,4 @@ class PromptDataset(Dataset):
         return length
 
     def __getitem__(self, idx):
-        return self.datasources[idx], self.prompts[idx], self.labels[idx]
+        return self.datasources[idx], self.prompts[idx], self.mm_data[idx], self.labels[idx]

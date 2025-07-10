@@ -35,6 +35,7 @@ class Experience:
     Shapes of each tensor:
     sequences: (B, S)
     attention_mask: (B, S)
+    mm_data: (B, .)  # multimodal data, e.g., images, audio, etc.
     action_mask: (B, A)
     action_log_probs: (B, S)
     base_action_log_probs: (B, S)
@@ -47,6 +48,7 @@ class Experience:
 
     sequences: torch.Tensor = None
     attention_mask: torch.LongTensor = None
+    mm_data: List[torch.Tensor] = None  # multimodal data, e.g., images, audio, etc.
     action_mask: torch.BoolTensor = None
 
     action_log_probs: torch.Tensor = None
@@ -68,6 +70,7 @@ class Experience:
     def __init__(
         self,
         sequences=None,
+        mm_data=None,
         action_log_probs=None,
         base_action_log_probs=None,
         values=None,
@@ -83,6 +86,7 @@ class Experience:
         info=None,
     ):
         self.sequences = sequences
+        self.mm_data = mm_data
         self.action_log_probs = action_log_probs
         self.base_action_log_probs = base_action_log_probs
         self.values = values
@@ -243,7 +247,9 @@ class SamplesGenerator:
         self.prompt_max_len = prompt_max_len
 
     @torch.no_grad()
-    def generate_samples(self, all_prompts: List[str], all_labels, **generate_kwargs) -> List[Experience]:
+    def generate_samples(
+        self, all_prompts: List[str], all_mm_data: List[str], all_labels, **generate_kwargs
+    ) -> List[Experience]:
         """
         Generate samples and return in batches.
 
@@ -256,7 +262,7 @@ class SamplesGenerator:
 
             batch_vllm_engine_call(self.vllm_engines, "wake_up")
 
-        rollout_samples = self._generate_vllm(all_prompts, all_labels, **generate_kwargs)
+        rollout_samples = self._generate_vllm(all_prompts, all_mm_data, all_labels, **generate_kwargs)
 
         # vLLM offload when vllm_enable_sleep
         if self.strategy.args.vllm_enable_sleep:
@@ -266,26 +272,30 @@ class SamplesGenerator:
 
         # tokenizer
 
-    def tokenize_fn(self, texts, max_length, padding=True, device=None):
+    def tokenize_fn(self, texts, mm_data, max_length, padding=True, device=None):
         if not padding:
             # when padding is False, return tokenized texts as list
             return self.tokenizer(
                 texts,
+                mm_data,
                 add_special_tokens=False,
                 max_length=max_length,
                 truncation=True,
+                return_dict=True,
             )
         batch = self.tokenizer(
             texts,
+            mm_data,
             return_tensors="pt",
             add_special_tokens=False,
             max_length=max_length,
             padding=True,
             truncation=True,
+            return_dict=True,
         )
         return {k: v.to(device) for k, v in batch.items()}
 
-    def _generate_vllm(self, all_prompts: List[str], all_labels, **kwargs) -> List[Experience]:
+    def _generate_vllm(self, all_prompts: List[str], all_mm_data, all_labels, **kwargs) -> List[Experience]:
         """Generate samples using vLLM engine.
 
         Args:
@@ -318,14 +328,30 @@ class SamplesGenerator:
         n_samples_per_prompt = kwargs.pop("n_samples_per_prompt", args.n_samples_per_prompt)
         all_prompts = sum([[prompt] * n_samples_per_prompt for prompt in all_prompts], [])
         all_labels = sum([[label] * n_samples_per_prompt for label in all_labels], [])
-        all_prompt_token_ids = self.tokenize_fn(all_prompts, self.prompt_max_len, padding=False)["input_ids"]
+        all_mm_data_embs = [
+            (
+                torch.stack([torch.load(path) for path in mm_data_path_sp.split("|")], dim=0)
+                if not mm_data_path_sp == ""
+                else None
+            )
+            for mm_data_path_sp in all_mm_data
+        ]
+        all_mm_data_embs = sum([[mm_data_emb] * n_samples_per_prompt for mm_data_emb in all_mm_data_embs], [])
 
+        tokenized = self.tokenize_fn(all_prompts, all_mm_data_embs, self.prompt_max_len, padding=False)
+        all_prompt_token_ids = tokenized["input_ids"]
         # Distribute requests to engines and collect responses
         refs = []
         batch_size = (len(all_prompt_token_ids) + len(llms) - 1) // len(llms)
+
         for i, llm in enumerate(llms):
             prompt_token_ids = all_prompt_token_ids[i * batch_size : (i + 1) * batch_size]
-            refs.append(llm.add_requests.remote(sampling_params=sampling_params, prompt_token_ids=prompt_token_ids))
+            mm_datas_embs = all_mm_data_embs[i * batch_size : (i + 1) * batch_size]
+            refs.append(
+                llm.add_requests.remote(
+                    sampling_params=sampling_params, prompt_token_ids=prompt_token_ids, mm_datas=mm_datas_embs
+                )
+            )
         ray.get(refs)
 
         # Retrieve and combine results from all outputs
@@ -341,7 +367,13 @@ class SamplesGenerator:
         for i in range(len(all_outputs)):
             output = all_outputs[i]
             prompt = all_prompts[i]
+            mm_data = all_mm_data_embs[i] if all_mm_data_embs else None
             label = all_labels[i]
+            n_expected_mm = prompt.count("<|image_pad|>")
+            if mm_data is None and n_expected_mm != 0 or (mm_data is not None and n_expected_mm != len(mm_data)):
+                raise ValueError(
+                    f"Mismatch between expected multimodal data count ({n_expected_mm}) and provided mm_data length ({len(mm_data) if mm_data is not None else 0})"
+                )
 
             # Concatenate prompt and output tokens
             input_ids = list(output.prompt_token_ids) + list(output.outputs[0].token_ids)
@@ -368,10 +400,10 @@ class SamplesGenerator:
                 "total_length": torch.tensor([total_length]),
                 "response_clip_ratio": torch.tensor([is_clipped]),
             }
-
             rollout_samples = Experience(
                 sequences=sequences.unsqueeze(0),
                 attention_mask=attention_mask.unsqueeze(0),
+                mm_data=[mm_data],
                 action_mask=action_mask.unsqueeze(0),
                 prompts=[prompt],
                 labels=[label],
@@ -473,6 +505,7 @@ class RemoteExperienceMaker(ABC):
         # Extract all information from samples in one pass
         # Convert samples into lists of tensors and metadata for batch processing
         sequences_list = [s.sequences for s in samples_list]
+        mm_data_list = [s.mm_data for s in samples_list]
         attention_mask_list = [s.attention_mask for s in samples_list]
         action_mask_list = [s.action_mask for s in samples_list]
 
@@ -493,7 +526,8 @@ class RemoteExperienceMaker(ABC):
             r_refs = self.remote_reward_model.get_rewards.remote(queries_list, prompts_list, labels_list)
         else:
             # Batch call reward model
-            r_refs = self.reward_model_group.async_run_method_batch(
+            raise NotImplementedError
+            r_refs = self.reward_model_group.async_run_method_batch(  # HERE
                 method_name="forward",
                 sequences=sequences_list,
                 attention_mask=attention_mask_list,
@@ -506,11 +540,13 @@ class RemoteExperienceMaker(ABC):
             ray.get(self.reward_model_group.async_run_method(method_name="empty_cache"))
 
         # Batch call actor model
+        print(sequences_list[0].shape, attention_mask_list[0].shape, action_mask_list[0].shape)
         action_log_probs_ref = self.actor_model_group.async_run_method_batch(
             method_name="forward",
             sequences=sequences_list,
             action_mask=action_mask_list,
             attention_mask=attention_mask_list,
+            mm_data=mm_data_list,
         )
 
         # Sync to avoid GPU OOM when colocate models
@@ -524,11 +560,12 @@ class RemoteExperienceMaker(ABC):
                 ray.get(r_refs)
                 ray.get(self.reward_model_group.async_run_method(method_name="empty_cache"))
 
-            value_ref = self.critic_model_group.async_run_method_batch(
+            value_ref = self.critic_model_group.async_run_method_batch(  # HERE
                 method_name="forward",
                 sequences=sequences_list,
                 action_mask=action_mask_list,
                 attention_mask=attention_mask_list,
+                mm_data=mm_data_list,
             )
             if args.colocate_all_models or args.colocate_critic_reward:
                 ray.get(value_ref)
@@ -538,11 +575,12 @@ class RemoteExperienceMaker(ABC):
 
         # Batch call initial model
         if self.initial_model_group is not None:
-            base_action_log_probs_ref = self.initial_model_group.async_run_method_batch(
+            base_action_log_probs_ref = self.initial_model_group.async_run_method_batch(  # HERE
                 method_name="forward",
                 sequences=sequences_list,
                 action_mask=action_mask_list,
                 attention_mask=attention_mask_list,
+                mm_data=mm_data_list,
             )
 
             if args.colocate_all_models or args.colocate_actor_ref:

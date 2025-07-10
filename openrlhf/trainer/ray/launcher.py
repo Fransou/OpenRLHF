@@ -128,15 +128,30 @@ class ReferenceModelActor(BaseModelActor):
         sequences: torch.LongTensor,
         action_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        mm_data: Optional[torch.Tensor] = None,
         return_output=False,
         packed_seq_lens: Optional[list[int]] = None,
     ) -> torch.Tensor:
         device = torch.cuda.current_device()
+        if mm_data is not None:
+            mm_data = [m for m in mm_data if m is not None]  # filter out None values
+            if mm_data == []:
+                mm_data = None
+        if mm_data is not None:
+            if isinstance(mm_data, list):
+                if mm_data[0].ndim == 1:
+                    mm_data = torch.stack(mm_data, dim=0)
+                elif mm_data[0].ndim == 2:
+                    mm_data = torch.concatenate(mm_data, dim=0)
+                else:
+                    raise ValueError(f"Unsupported mm_data shape: {mm_data[0].shape}")
+
         with torch.no_grad():
             log_probs = self.model(
                 sequences.to(device),
                 action_mask.to(device),
                 attention_mask.to(device),
+                mm_data=mm_data.to(device) if mm_data is not None else None,
                 ring_attn_group=self.strategy.ring_attn_group,
                 packed_seq_lens=packed_seq_lens,
             )
@@ -172,14 +187,29 @@ class RewardModelActor(BaseModelActor):
         self,
         sequences: torch.LongTensor,
         attention_mask: Optional[torch.Tensor] = None,
+        mm_data: Optional[torch.Tensor] = None,
         packed_seq_lens=None,
         pad_sequence=False,
     ) -> torch.Tensor:
         device = torch.cuda.current_device()
+        if mm_data is not None:
+            mm_data = [m for m in mm_data if m is not None]  # filter out None values
+            if mm_data == []:
+                mm_data = None
+        if mm_data is not None:
+            if isinstance(mm_data, list):
+                if mm_data[0].ndim == 1:
+                    mm_data = torch.stack(mm_data, dim=0)
+                elif mm_data[0].ndim == 2:
+                    mm_data = torch.concatenate(mm_data, dim=0)
+                else:
+                    raise ValueError(f"Unsupported mm_data shape: {mm_data[0].shape}")
+
         with torch.no_grad():
             reward = self.model(
                 sequences.to(device),
                 attention_mask.to(device),
+                mm_data=mm_data.to(device) if mm_data is not None else None,
                 ring_attn_group=self.strategy.ring_attn_group,
                 pad_sequence=True,
                 packed_seq_lens=packed_seq_lens,

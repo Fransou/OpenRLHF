@@ -23,9 +23,10 @@ def get_strategy(args):
 
 def get_tokenizer(pretrain, model, padding_side="left", strategy=None, use_fast=True):
     # Check if Multimodal
-    if hasattr(model, "get_multimodal_embeddings"):
+    if True:
         # Use the AutoProcessor for multimodal models
         from transformers import AutoProcessor
+
         processor = AutoProcessor.from_pretrained(pretrain, trust_remote_code=True)
         processor.tokenizer.padding_side = padding_side
         if processor.tokenizer.pad_token is None:
