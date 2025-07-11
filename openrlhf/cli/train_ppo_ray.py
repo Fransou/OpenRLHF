@@ -448,6 +448,9 @@ if __name__ == "__main__":
     # ModelScope parameters
     parser.add_argument("--use_ms", action="store_true", default=False)
 
+    # Multimodal parameters
+    parser.add_argument("--multimodal", action="store_true", default=False)
+
     args = parser.parse_args()
 
     # Validate arguments

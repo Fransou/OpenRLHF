@@ -273,26 +273,46 @@ class SamplesGenerator:
         # tokenizer
 
     def tokenize_fn(self, texts, mm_data, max_length, padding=True, device=None):
-        if not padding:
-            # when padding is False, return tokenized texts as list
-            return self.tokenizer(
+        if self.args.multimodal:
+            if not padding:
+                # when padding is False, return tokenized texts as list
+                return self.tokenizer(
+                    texts,
+                    mm_data,
+                    add_special_tokens=False,
+                    max_length=max_length,
+                    truncation=True,
+                    return_dict=True,
+                )
+            batch = self.tokenizer(
                 texts,
                 mm_data,
+                return_tensors="pt",
                 add_special_tokens=False,
                 max_length=max_length,
+                padding=True,
                 truncation=True,
                 return_dict=True,
             )
-        batch = self.tokenizer(
-            texts,
-            mm_data,
-            return_tensors="pt",
-            add_special_tokens=False,
-            max_length=max_length,
-            padding=True,
-            truncation=True,
-            return_dict=True,
-        )
+        else:
+            if not padding:
+                # when padding is False, return tokenized texts as list
+                return self.tokenizer(
+                    texts,
+                    add_special_tokens=False,
+                    max_length=max_length,
+                    truncation=True,
+                    return_dict=True,
+                )
+            batch = self.tokenizer(
+                texts,
+                return_tensors="pt",
+                add_special_tokens=False,
+                max_length=max_length,
+                padding=True,
+                truncation=True,
+                return_dict=True,
+            )
         return {k: v.to(device) for k, v in batch.items()}
 
     def _generate_vllm(self, all_prompts: List[str], all_mm_data, all_labels, **kwargs) -> List[Experience]:
@@ -328,15 +348,17 @@ class SamplesGenerator:
         n_samples_per_prompt = kwargs.pop("n_samples_per_prompt", args.n_samples_per_prompt)
         all_prompts = sum([[prompt] * n_samples_per_prompt for prompt in all_prompts], [])
         all_labels = sum([[label] * n_samples_per_prompt for label in all_labels], [])
-        all_mm_data_embs = [
-            (
-                torch.stack([torch.load(path) for path in mm_data_path_sp.split("|")], dim=0)
-                if not mm_data_path_sp == ""
-                else None
-            )
-            for mm_data_path_sp in all_mm_data
-        ]
-        all_mm_data_embs = sum([[mm_data_emb] * n_samples_per_prompt for mm_data_emb in all_mm_data_embs], [])
+        all_mm_data_embs = None
+        if args.multimodal:
+            all_mm_data_embs = [
+                (
+                    torch.stack([torch.load(path) for path in mm_data_path_sp.split("|")], dim=0)
+                    if not mm_data_path_sp == ""
+                    else None
+                )
+                for mm_data_path_sp in all_mm_data
+            ]
+            all_mm_data_embs = sum([[mm_data_emb] * n_samples_per_prompt for mm_data_emb in all_mm_data_embs], [])
 
         tokenized = self.tokenize_fn(all_prompts, all_mm_data_embs, self.prompt_max_len, padding=False)
         all_prompt_token_ids = tokenized["input_ids"]
@@ -347,11 +369,16 @@ class SamplesGenerator:
         for i, llm in enumerate(llms):
             prompt_token_ids = all_prompt_token_ids[i * batch_size : (i + 1) * batch_size]
             mm_datas_embs = all_mm_data_embs[i * batch_size : (i + 1) * batch_size]
-            refs.append(
-                llm.add_requests.remote(
-                    sampling_params=sampling_params, prompt_token_ids=prompt_token_ids, mm_datas=mm_datas_embs
+            if args.multimodal:
+                refs.append(
+                    llm.add_requests.remote(
+                        sampling_params=sampling_params, prompt_token_ids=prompt_token_ids, mm_datas=mm_datas_embs
+                    )
                 )
-            )
+            else:
+                refs.append(
+                    llm.add_requests.remote(sampling_params=sampling_params, prompt_token_ids=prompt_token_ids)
+                )
         ray.get(refs)
 
         # Retrieve and combine results from all outputs
@@ -526,7 +553,6 @@ class RemoteExperienceMaker(ABC):
             r_refs = self.remote_reward_model.get_rewards.remote(queries_list, prompts_list, labels_list)
         else:
             # Batch call reward model
-            raise NotImplementedError
             r_refs = self.reward_model_group.async_run_method_batch(  # HERE
                 method_name="forward",
                 sequences=sequences_list,

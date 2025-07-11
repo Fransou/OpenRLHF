@@ -91,7 +91,7 @@ class LLMRayActor(BaseLLMRayActor):
     def wake_up(self):
         self.llm.wake_up()
 
-    def add_requests(self, sampling_params, prompt_token_ids, mm_datas):
+    def add_requests(self, sampling_params, prompt_token_ids, mm_datas=None):
         """
         Process requests from rank0 and generate responses.
         Since only rank0 will send requests, we don't need to track actor ranks.

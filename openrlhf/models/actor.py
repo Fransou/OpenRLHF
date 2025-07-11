@@ -49,9 +49,11 @@ class Actor(nn.Module):
         packing_samples=False,
         temperature=1.0,
         use_liger_kernel=False,
+        multimodal=False,
         **kwargs,
     ) -> None:
         super().__init__()
+        self.multimodal = multimodal
         self.temperature = temperature
         self.bf16 = bf16
         if isinstance(pretrain_or_model, str):
@@ -159,10 +161,12 @@ class Actor(nn.Module):
             rolled_sequences = torch.roll(sequences, shifts=-1, dims=1)
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
-
-        output = self.model(
-            sequences, pixel_values=mm_data, attention_mask=foward_attention_mask, position_ids=position_ids
-        )
+        if self.multimodal:
+            output = self.model(
+                sequences, pixel_values=mm_data, attention_mask=foward_attention_mask, position_ids=position_ids
+            )
+        else:
+            output = self.model(sequences, attention_mask=foward_attention_mask, position_ids=position_ids)
         # https://github.com/OpenRLHF/OpenRLHF/pull/634
         output["logits"] = output["logits"].to(torch.float32)
 

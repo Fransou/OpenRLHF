@@ -395,6 +395,7 @@ class PolicyModelActor(BaseModelActor):
             packing_samples=strategy.args.packing_samples,
             temperature=strategy.args.temperature,
             use_liger_kernel=strategy.args.use_liger_kernel,
+            multimodal=strategy.args.multimodal,
         )
         strategy.print(actor)
 
@@ -411,6 +412,7 @@ class PolicyModelActor(BaseModelActor):
                 load_in_4bit=strategy.args.load_in_4bit,
                 ds_config=strategy.get_ds_eval_config(offload=True),
                 packing_samples=strategy.args.packing_samples,
+                multimodal=strategy.args.multimodal,
             )
         else:
             ema_model = None

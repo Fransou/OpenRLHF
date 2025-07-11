@@ -114,6 +114,7 @@ class ReferenceModelActor(BaseModelActor):
             packing_samples=strategy.args.packing_samples,
             temperature=strategy.args.temperature,
             use_liger_kernel=strategy.args.use_liger_kernel,
+            multimodal=strategy.args.multimodal,
         )
         strategy.print(model)
 
