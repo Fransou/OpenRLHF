@@ -190,7 +190,6 @@ class Actor(nn.Module):
         log_probs = log_probs[:, :-1]
         if not return_action_log_probs and return_logprobs:
             return (log_probs, output) if return_output else log_probs
-        print(action_mask.shape, log_probs.shape)
         action_log_probs = log_probs[:, -action_mask.shape[1] :] * action_mask.float()
 
         return (action_log_probs, output) if return_output else action_log_probs
