@@ -23,7 +23,7 @@ def get_strategy(args):
 
 def get_tokenizer(pretrain, model, padding_side="left", strategy=None, use_fast=True):
     # Check if Multimodal
-    if True:
+    if strategy is not None and strategy.args.multimodal:
         # Use the AutoProcessor for multimodal models
         from transformers import AutoProcessor
 
