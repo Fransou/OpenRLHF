@@ -175,6 +175,7 @@ class NaiveReplayBuffer(ABC):
     @torch.no_grad()
     def sample(self) -> Experience:
         items = random.sample(self.items, self.sample_batch_size)
+        print("Sampled items from replay buffer:", items)
         experience = make_experience_batch(items, self.packing_samples)
         if self.cpu_offload:
             experience.to_device(self.target_device)
