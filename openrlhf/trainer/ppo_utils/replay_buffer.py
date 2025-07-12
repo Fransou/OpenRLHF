@@ -15,6 +15,7 @@ class BufferItem:
 
     Shapes of each tensor:
     sequences: (S)
+    mm_data: (n_mm,)
     action_log_probs: (A)
     base_action_log_probs: (A)
     values: (1)
@@ -27,6 +28,7 @@ class BufferItem:
     """
 
     sequences: torch.Tensor
+    mm_data: Optional[torch.Tensor]  # Multi-modal data, e.g., images, audio, etc.
     action_log_probs: torch.Tensor
     base_action_log_probs: torch.Tensor
     values: torch.Tensor
@@ -79,6 +81,7 @@ def make_experience_batch(items: List[BufferItem], packing_samples=False) -> Exp
     # Get fields from BufferItem, excluding 'info'
     keys = tuple(field.name for field in fields(BufferItem) if field.name != "info")
     print("Keys for BufferItem:", keys)
+    print(getattr(items[0], "mm_data"))
     # Process main attributes
     kwargs = {
         key: (
@@ -175,7 +178,6 @@ class NaiveReplayBuffer(ABC):
     @torch.no_grad()
     def sample(self) -> Experience:
         items = random.sample(self.items, self.sample_batch_size)
-        print("Sampled items from replay buffer:", items)
         experience = make_experience_batch(items, self.packing_samples)
         if self.cpu_offload:
             experience.to_device(self.target_device)
