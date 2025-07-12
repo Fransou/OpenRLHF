@@ -80,8 +80,6 @@ def make_experience_batch(items: List[BufferItem], packing_samples=False) -> Exp
 
     # Get fields from BufferItem, excluding 'info'
     keys = tuple(field.name for field in fields(BufferItem) if field.name != "info")
-    print("Keys for BufferItem:", keys)
-    print(getattr(items[0], "mm_data").shape if getattr(items[0], "mm_data") is not None else "No mm_data")
     # Process main attributes
     kwargs = {
         key: (
@@ -95,8 +93,6 @@ def make_experience_batch(items: List[BufferItem], packing_samples=False) -> Exp
 
     # Process info dictionary
     kwargs["info"] = {}
-    print(kwargs["mm_data"])
-    print((kwargs["sequences"] == 151655).sum())
     for key in items[0].info.keys():
         values = [item.info[key] for item in items]
         if not values:
@@ -165,7 +161,6 @@ class NaiveReplayBuffer(ABC):
     def append(self, experience: Experience) -> None:
         if self.cpu_offload:
             experience.to_device(torch.device("cpu"))
-        print("Experience PPOactor:", experience.mm_data is not None)
         items = split_experience_batch(experience)
         items = remove_padding_in_sequences(items)
         self.items.extend(items)
