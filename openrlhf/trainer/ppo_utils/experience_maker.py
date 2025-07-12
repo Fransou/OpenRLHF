@@ -428,6 +428,21 @@ class SamplesGenerator:
                 "response_clip_ratio": torch.tensor([is_clipped]),
             }
             print(mm_data)
+            # Check if the number of mm_data matches the number of multimodal tokens in the prompt
+            if self.strategy.args.multimodal:
+                n_mm_tok_count = prompt.count(self.tokenizer.image_token)
+                if mm_data is not None:
+                    if n_mm_tok_count != mm_data.shape[0]:
+                        raise ValueError(
+                            f"Missmatch between expected multimodal token count\
+                              ({n_mm_tok_count}) and provided mm_data length ({mm_data.shape[0]})\
+                              for prompt: {prompt}"
+                        )
+                elif n_mm_tok_count > 0:
+                    raise ValueError(
+                        f"Expected {n_mm_tok_count} multimodal tokens in prompt, but no mm_data provided for prompt: {prompt}"
+                    )
+
             rollout_samples = Experience(
                 sequences=sequences.unsqueeze(0),
                 attention_mask=attention_mask.unsqueeze(0),
