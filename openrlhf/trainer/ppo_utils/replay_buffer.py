@@ -78,7 +78,7 @@ def make_experience_batch(items: List[BufferItem], packing_samples=False) -> Exp
 
     # Get fields from BufferItem, excluding 'info'
     keys = tuple(field.name for field in fields(BufferItem) if field.name != "info")
-
+    print("Keys for BufferItem:", keys)
     # Process main attributes
     kwargs = {
         key: (
