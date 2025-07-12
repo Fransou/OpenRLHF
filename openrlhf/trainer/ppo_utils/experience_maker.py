@@ -427,7 +427,6 @@ class SamplesGenerator:
                 "total_length": torch.tensor([total_length]),
                 "response_clip_ratio": torch.tensor([is_clipped]),
             }
-            print(mm_data)
             # Check if the number of mm_data matches the number of multimodal tokens in the prompt
             if self.strategy.args.multimodal:
                 n_mm_tok_count = prompt.count(self.tokenizer.image_token)
@@ -442,7 +441,6 @@ class SamplesGenerator:
                     raise ValueError(
                         f"Expected {n_mm_tok_count} multimodal tokens in prompt, but no mm_data provided for prompt: {prompt}"
                     )
-            print(mm_data is None)
             rollout_samples = Experience(
                 sequences=sequences.unsqueeze(0),
                 attention_mask=attention_mask.unsqueeze(0),
@@ -582,7 +580,6 @@ class RemoteExperienceMaker(ABC):
             ray.get(self.reward_model_group.async_run_method(method_name="empty_cache"))
 
         # Batch call actor model
-        print(sequences_list[0].shape, attention_mask_list[0].shape, action_mask_list[0].shape)
         action_log_probs_ref = self.actor_model_group.async_run_method_batch(
             method_name="forward",
             sequences=sequences_list,
