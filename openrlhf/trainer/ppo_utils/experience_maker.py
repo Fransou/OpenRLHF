@@ -366,7 +366,7 @@ class SamplesGenerator:
 
         for i, llm in enumerate(llms):
             prompt_token_ids = all_prompt_token_ids[i * batch_size : (i + 1) * batch_size]
-            mm_datas_embs = all_mm_data_embs[i * batch_size : (i + 1) * batch_size]
+            mm_datas_embs = all_mm_data_embs[i * batch_size : (i + 1) * batch_size] if all_mm_data_embs else None
             if args.multimodal:
                 refs.append(
                     llm.add_requests.remote(
