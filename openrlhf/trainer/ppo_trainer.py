@@ -507,10 +507,6 @@ class PPOTrainer(BasePPOTrainer):
                 sample0 = self.tokenizer.batch_decode(
                     experiences[0].sequences[0].unsqueeze(0), skip_special_tokens=True
                 )
-                for i, exp in enumerate(experiences):
-                    print("Experience %d:" % i)
-                    print(exp)
-                print("="*10)
                 print(sample0)
                 refs = self.actor_model_group.async_run_method_batch(method_name="append", experience=experiences)
                 if self.critic_model_group is not None:
