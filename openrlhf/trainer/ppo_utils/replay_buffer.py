@@ -89,8 +89,9 @@ def make_experience_batch(items: List[BufferItem], packing_samples=False) -> Exp
             if getattr(items[0], key) is not None
             else None
         )
-        for key in keys
+        for key in keys if not key == "mm_data"
     }
+    kwargs["mm_data"] = [getattr(item, "mm_data") for item in items if getattr(item, "mm_data") is not None]
 
     # Process info dictionary
     kwargs["info"] = {}

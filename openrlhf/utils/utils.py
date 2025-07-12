@@ -63,11 +63,6 @@ def zero_pad_sequences(
     sequences: List[torch.Tensor], side: str = "left", value: int = 0, stack: bool = False
 ) -> torch.Tensor:
     assert side in ("left", "right")
-    # Test if is a 1D tensor otherwise pass
-    if not all(seq.dim() == 1 for seq in sequences):
-        if all(seq.dim() == 2 for seq in sequences):
-            return sequences
-
     max_len = max(seq.size(-1) for seq in sequences)
     padded_sequences = []
     for seq in sequences:
