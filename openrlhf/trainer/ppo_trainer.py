@@ -470,6 +470,10 @@ class PPOTrainer(BasePPOTrainer):
                     rand_prompts, mm_data, labels, remote_reward_model=remote_reward_model, **self.generate_kwargs
                 )
                 pbar.update()
+                for i, sample in enumerate(rollout_samples):
+                    print(f"Sample {i}:")
+                    print(sample)
+
                 # dynamic filtering
                 pass_rate = None
                 if self.args.dynamic_filtering:
