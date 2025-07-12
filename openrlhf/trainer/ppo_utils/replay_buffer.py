@@ -164,7 +164,7 @@ class NaiveReplayBuffer(ABC):
         if self.cpu_offload:
             experience.to_device(torch.device("cpu"))
         print("PPOAcotrTrainer append experience to replay buffer")
-        print("Experience PPOactor:", experience['mm_data'] is not None)
+        print("Experience PPOactor:", experience.mm_data is not None)
         items = split_experience_batch(experience)
         items = remove_padding_in_sequences(items)
         self.items.extend(items)
