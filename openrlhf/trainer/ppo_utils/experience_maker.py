@@ -442,7 +442,7 @@ class SamplesGenerator:
                     raise ValueError(
                         f"Expected {n_mm_tok_count} multimodal tokens in prompt, but no mm_data provided for prompt: {prompt}"
                     )
-
+            print(mm_data is None)
             rollout_samples = Experience(
                 sequences=sequences.unsqueeze(0),
                 attention_mask=attention_mask.unsqueeze(0),

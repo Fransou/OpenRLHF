@@ -507,6 +507,7 @@ class PPOTrainer(BasePPOTrainer):
                 sample0 = self.tokenizer.batch_decode(
                     experiences[0].sequences[0].unsqueeze(0), skip_special_tokens=True
                 )
+                print(experiences)
                 print(sample0)
                 refs = self.actor_model_group.async_run_method_batch(method_name="append", experience=experiences)
                 if self.critic_model_group is not None:
