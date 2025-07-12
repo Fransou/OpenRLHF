@@ -427,6 +427,7 @@ class SamplesGenerator:
                 "total_length": torch.tensor([total_length]),
                 "response_clip_ratio": torch.tensor([is_clipped]),
             }
+            print(mm_data)
             rollout_samples = Experience(
                 sequences=sequences.unsqueeze(0),
                 attention_mask=attention_mask.unsqueeze(0),

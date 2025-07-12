@@ -207,7 +207,7 @@ class ActorPPOTrainer(ABC):
         old_action_log_probs = experience.action_log_probs
         advantages = experience.advantages
         base_action_log_probs = experience.base_action_log_probs
-
+        print(mm_data)
         if mm_data is not None:
             if isinstance(mm_data, list):
                 if mm_data[0].ndim == 1:
@@ -220,7 +220,7 @@ class ActorPPOTrainer(ABC):
         action_log_probs, output = self.actor(  # HERE
             sequences,
             action_mask,
-            mm_data=mm_data.to(device) if mm_data is not None else None,
+            mm_data=mm_data if mm_data is not None else None,
             attention_mask=attention_mask,
             return_output=True,
             ring_attn_group=self.strategy.ring_attn_group,
