@@ -207,7 +207,7 @@ class ActorPPOTrainer(ABC):
         old_action_log_probs = experience.action_log_probs
         advantages = experience.advantages
         base_action_log_probs = experience.base_action_log_probs
-        print(mm_data)
+        print(experience)
         if mm_data is not None:
             if isinstance(mm_data, list):
                 if mm_data[0].ndim == 1:
