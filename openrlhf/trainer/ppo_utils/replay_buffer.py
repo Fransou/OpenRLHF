@@ -91,10 +91,11 @@ def make_experience_batch(items: List[BufferItem], packing_samples=False) -> Exp
         )
         for key in keys
     }
-    print("kwargs:", kwargs["mm_data"])
 
     # Process info dictionary
     kwargs["info"] = {}
+    print(kwargs["mm_data"])
+    print((kwargs["sequences"] == 151655).sum())
     for key in items[0].info.keys():
         values = [item.info[key] for item in items]
         if not values:
@@ -163,7 +164,6 @@ class NaiveReplayBuffer(ABC):
     def append(self, experience: Experience) -> None:
         if self.cpu_offload:
             experience.to_device(torch.device("cpu"))
-        print("PPOAcotrTrainer append experience to replay buffer")
         print("Experience PPOactor:", experience.mm_data is not None)
         items = split_experience_batch(experience)
         items = remove_padding_in_sequences(items)
