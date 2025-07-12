@@ -2,12 +2,13 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 
-def preprocess_data(data, input_template=None, input_key="input", label_key=None, apply_chat_template=None):
+def preprocess_data(data, input_template=None, input_key="input", label_key=None, apply_chat_template=None, multimodal=False):
     if apply_chat_template:
         chat = data[input_key]
         if isinstance(chat, str):
             chat = [{"role": "user", "content": chat}]
-        chat = apply_chat_template(chat, tokenize=False, add_generation_prompt=True, return_dict=True)
+
+        chat = apply_chat_template(chat, tokenize=False, add_generation_prompt=True, return_dict=multimodal)
         if isinstance(chat, str):
             prompt = chat
             mm_data = [""] * len(chat)
@@ -61,7 +62,14 @@ class PromptDataset(Dataset):
         self.labels = []
         self.datasources = []
         for data in tqdm(dataset, desc="Preprocessing data", disable=not self.strategy.is_rank_0()):
-            prompt, mm_data, label = preprocess_data(data, input_template, input_key, label_key, apply_chat_template)
+            prompt, mm_data, label = preprocess_data(
+                data,
+                input_template,
+                input_key,
+                label_key,
+                apply_chat_template,
+                multimodal = self.strategy.args.multimodal
+            )
             self.prompts.append(prompt)
             self.mm_data.append(mm_data)
             self.labels.append(label)
