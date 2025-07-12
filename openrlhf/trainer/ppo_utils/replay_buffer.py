@@ -91,6 +91,7 @@ def make_experience_batch(items: List[BufferItem], packing_samples=False) -> Exp
         )
         for key in keys
     }
+    print("kwargs:", kwargs["mm_data"])
 
     # Process info dictionary
     kwargs["info"] = {}
