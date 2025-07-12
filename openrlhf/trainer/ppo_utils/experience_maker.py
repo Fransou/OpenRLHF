@@ -302,7 +302,6 @@ class SamplesGenerator:
                     add_special_tokens=False,
                     max_length=max_length,
                     truncation=True,
-                    return_dict=True,
                 )
             batch = self.tokenizer(
                 texts,
@@ -311,7 +310,6 @@ class SamplesGenerator:
                 max_length=max_length,
                 padding=True,
                 truncation=True,
-                return_dict=True,
             )
         return {k: v.to(device) for k, v in batch.items()}
 
