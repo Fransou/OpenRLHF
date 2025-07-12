@@ -203,10 +203,13 @@ class ActorPPOTrainer(ABC):
         action_mask = experience.action_mask
         attention_mask = experience.attention_mask
         mm_data = experience.mm_data
+        if all(m is None for m in mm_data):
+            mm_data = None
         packed_seq_lens = None
         old_action_log_probs = experience.action_log_probs
         advantages = experience.advantages
         base_action_log_probs = experience.base_action_log_probs
+
         if mm_data is not None:
             if isinstance(mm_data, list):
                 if mm_data[0].ndim == 1:
