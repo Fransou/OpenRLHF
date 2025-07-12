@@ -122,7 +122,7 @@ class BasePPOTrainer(ABC):
             if self.strategy.args.deepspeed_enable_sleep:
                 ray.get(self.critic_model_group.async_run_method(method_name="reload_states"))
 
-            critic_status_ref = self.critic_model_group.async_run_method(method_name="fit")  ##################
+            critic_status_ref = self.critic_model_group.async_run_method(method_name="fit")
 
             if self.strategy.args.colocate_all_models or self.strategy.args.deepspeed_enable_sleep:
                 status.update(ray.get(critic_status_ref)[0])
@@ -470,10 +470,6 @@ class PPOTrainer(BasePPOTrainer):
                     rand_prompts, mm_data, labels, remote_reward_model=remote_reward_model, **self.generate_kwargs
                 )
                 pbar.update()
-                for i, sample in enumerate(rollout_samples):
-                    print(f"Sample {i}:")
-                    print(sample)
-
                 # dynamic filtering
                 pass_rate = None
                 if self.args.dynamic_filtering:
@@ -514,6 +510,7 @@ class PPOTrainer(BasePPOTrainer):
                 for i, exp in enumerate(experiences):
                     print("Experience %d:" % i)
                     print(exp)
+                print("="*10)
                 print(sample0)
                 refs = self.actor_model_group.async_run_method_batch(method_name="append", experience=experiences)
                 if self.critic_model_group is not None:
