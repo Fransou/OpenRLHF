@@ -49,11 +49,13 @@ class Actor(nn.Module):
         packing_samples=False,
         temperature=1.0,
         use_liger_kernel=False,
+        multimodal=False,
         **kwargs,
     ) -> None:
         super().__init__()
+        self.multimodal = multimodal
         self.temperature = temperature
-
+        self.bf16 = bf16
         if isinstance(pretrain_or_model, str):
             attn_implementation = "flash_attention_2" if use_flash_attention_2 else "eager"
 
@@ -135,6 +137,7 @@ class Actor(nn.Module):
         sequences: torch.LongTensor,
         action_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        mm_data: Optional[torch.Tensor] = None,
         return_output=False,
         allgather_logits=False,
         return_logprobs=False,
@@ -145,6 +148,9 @@ class Actor(nn.Module):
         """Returns action log probs"""
         batch, seqlen = sequences.size()
         foward_attention_mask = attention_mask
+        if mm_data is not None and self.bf16:
+            mm_data = mm_data.to(torch.bfloat16)
+
         if self.packing_samples:
             sequences, position_ids, rolled_sequences, ring_attn_pad_len, indices = unpad_and_slice_tensor(
                 sequences, attention_mask, ring_attn_group
@@ -155,8 +161,12 @@ class Actor(nn.Module):
             rolled_sequences = torch.roll(sequences, shifts=-1, dims=1)
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
-
-        output = self.model(sequences, attention_mask=foward_attention_mask, position_ids=position_ids)
+        if self.multimodal:
+            output = self.model(
+                sequences, pixel_values=mm_data, attention_mask=foward_attention_mask, position_ids=position_ids
+            )
+        else:
+            output = self.model(sequences, attention_mask=foward_attention_mask, position_ids=position_ids)
         # https://github.com/OpenRLHF/OpenRLHF/pull/634
         output["logits"] = output["logits"].to(torch.float32)
 
@@ -184,7 +194,6 @@ class Actor(nn.Module):
         log_probs = log_probs[:, :-1]
         if not return_action_log_probs and return_logprobs:
             return (log_probs, output) if return_output else log_probs
-
         action_log_probs = log_probs[:, -action_mask.shape[1] :] * action_mask.float()
 
         return (action_log_probs, output) if return_output else action_log_probs

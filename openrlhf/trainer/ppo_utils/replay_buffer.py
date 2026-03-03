@@ -15,6 +15,7 @@ class BufferItem:
 
     Shapes of each tensor:
     sequences: (S)
+    mm_data: (n_mm,)
     action_log_probs: (A)
     base_action_log_probs: (A)
     values: (1)
@@ -27,6 +28,7 @@ class BufferItem:
     """
 
     sequences: torch.Tensor
+    mm_data: Optional[torch.Tensor]  # Multi-modal data, e.g., images, audio, etc.
     action_log_probs: torch.Tensor
     base_action_log_probs: torch.Tensor
     values: torch.Tensor
@@ -78,7 +80,6 @@ def make_experience_batch(items: List[BufferItem], packing_samples=False) -> Exp
 
     # Get fields from BufferItem, excluding 'info'
     keys = tuple(field.name for field in fields(BufferItem) if field.name != "info")
-
     # Process main attributes
     kwargs = {
         key: (
@@ -87,7 +88,9 @@ def make_experience_batch(items: List[BufferItem], packing_samples=False) -> Exp
             else None
         )
         for key in keys
+        if not key == "mm_data"
     }
+    kwargs["mm_data"] = [getattr(item, "mm_data") for item in items if getattr(item, "mm_data") is not None]
 
     # Process info dictionary
     kwargs["info"] = {}
