@@ -1,8 +1,10 @@
+import json
 import os
 import time
 from abc import ABC
 from datetime import timedelta
 
+import pandas as pd
 import ray
 import torch
 from tqdm import tqdm
@@ -87,19 +89,25 @@ class BasePPOTrainer(ABC):
         if self.strategy.args.use_wandb:
             os.environ["WANDB_MODE"] = "offline"
             import wandb
+
             wandb.require("legacy-service")
             self._wandb = wandb
             run = self._wandb.init(
                 project=self.strategy.args.wandb_project,
                 name=self.strategy.args.wandb_run_name,
                 config=self.strategy.args.__dict__,
-                mode="offline"
+                mode="offline",
             )
             wandb.define_metric("train/global_step")
             wandb.define_metric("train/*", step_metric="train/global_step", step_sync=True)
             wandb.define_metric("eval/epoch")
             wandb.define_metric("eval/*", step_metric="eval/epoch", step_sync=True)
-            self.generated_samples_table = wandb.Table(columns=["global_step", "text", "reward"])
+            self.generated_samples_table = wandb.Table(
+                columns=["global_step", "prompt", "smiles", "used_tools", "reward"]
+            )
+            self.generated_samples_dataframe = pd.DataFrame(
+                columns=["global_step", "prompt", "completion", "smiles", "used_tools", "reward"]
+            )
 
         # Initialize TensorBoard writer if wandb is not available
         if self.strategy.args.use_tensorboard and self._wandb is None:
@@ -161,18 +169,63 @@ class BasePPOTrainer(ABC):
             batch_vllm_engine_call(self.vllm_engines, "sleep")
 
     def save_logs_and_checkpoints(self, args, global_step, step_bar, logs_dict={}, client_states={}):
+        global_step = logs_dict.get("global_step", global_step)
         if global_step % args.logging_steps == 0:
             # wandb
             if self._wandb is not None:
                 # Add generated samples to wandb using Table
-                if "generated_samples" in logs_dict:
+                if "generated_samples" in logs_dict and global_step % 10 == 0:
                     # https://github.com/wandb/wandb/issues/2981#issuecomment-1997445737
-                    new_table = self._wandb.Table(
-                        columns=self.generated_samples_table.columns, data=self.generated_samples_table.data
+                    new_data = []
+                    for line in logs_dict.pop("generated_samples"):
+                        # line is a list of [prompt, completion, reward]
+                        prompt, completion, reward = line
+                        reward = float(reward) if reward is not None else 0.0
+                        smiles = completion.split("<answer>")[-1].strip()
+                        if smiles is None or len(completion.split("</answer>")[0].split("<answer>")) == 1:
+                            smiles = "invalid"
+                        else:
+                            smiles = completion.split("<answer>")[-1].split("</answer>")[0].strip()
+                            from rdkit import Chem
+
+                            if not Chem.MolFromSmiles(smiles):
+                                smiles = "invalid"
+                        if completion.count("<tool_call>") > 1:
+                            # Parse the las tool count and get the arguments "smiles"
+                            used_tools = completion.split("<tool_call>")[2].split("</tool_call>")[0].replace("\n", "")
+                            try:
+                                args = json.loads(used_tools)
+                                smiles_tool_call = args.get("arguments", {}).get("smiles", "invalid")
+                                smiles_tool_call = (
+                                    ";".join(smiles_tool_call)
+                                    if isinstance(smiles_tool_call, list)
+                                    else smiles_tool_call
+                                )
+                            except Exception as e:
+                                smiles_tool_call = "invalid"
+                        else:
+                            smiles_tool_call = "invalid"
+
+                        line = [global_step, prompt, smiles, smiles_tool_call, reward]
+
+                        new_data.append(line)
+                        self.generated_samples_dataframe.loc[len(self.generated_samples_dataframe)] = [
+                            global_step,
+                            prompt,
+                            completion,
+                            smiles,
+                            """"arguments": {""" in completion,
+                            reward,
+                        ]
+
+                    self.generated_samples_table = self._wandb.Table(
+                        columns=self.generated_samples_table.columns, data=new_data
                     )
-                    new_table.add_data(global_step, *logs_dict.pop("generated_samples"))
-                    self.generated_samples_table = new_table
-                    self._wandb.log({"train/generated_samples": new_table})
+                    self._wandb.log({f"train/generated_samples_{global_step}": self.generated_samples_table})
+                    self.generated_samples_dataframe.to_csv(
+                        os.path.join(self.strategy.args.ckpt_path, f"generated_samples.csv"),
+                        index=False,
+                    )
                 logs = {
                     "train/%s" % k: v
                     for k, v in {
@@ -193,8 +246,9 @@ class BasePPOTrainer(ABC):
                         self._tensorboard.add_scalar(f"train/{k}", v, global_step)
 
         # TODO: Add evaluation mechanism for PPO
-        if global_step % args.eval_steps == 0 and self.eval_dataloader and len(self.eval_dataloader) > 0:
-            self.evaluate(self.eval_dataloader, global_step, args.eval_temperature, args.eval_n_samples_per_prompt)
+        if hasattr(args, "eval_steps") and args.eval_steps > 0:
+            if global_step % args.eval_steps == 0 and self.eval_dataloader and len(self.eval_dataloader) > 0:
+                self.evaluate(self.eval_dataloader, global_step, args.eval_temperature, args.eval_n_samples_per_prompt)
         # save ckpt
         # TODO: save best model on dev, use loss/perplexity/others on whole dev dataset as metric
         if global_step % args.save_steps == 0:
@@ -226,12 +280,13 @@ class BasePPOTrainer(ABC):
         with torch.no_grad():
             # First collect all prompts and labels
             all_prompts = []
-            all_labels = []
-            prompt_to_datasource = {}  # Dictionary to store mapping between prompts and their data sources
+            all_mm_data = []
+            all_metadata = []
 
-            for datasources, prompts, labels in eval_dataloader:
-                all_prompts.extend(prompts)
-                all_labels.extend(labels)
+            for datasources, prompt, mm_data, pixel_values, metadatas in eval_dataloader:
+                all_prompts.extend(prompt)
+                all_mm_data.extend(mm_data)
+                all_metadata.extend(metadatas)
                 # Create mapping for each prompt to its corresponding data source
                 for prompt, datasource in zip(prompts, datasources):
                     prompt_to_datasource[prompt] = datasource
@@ -241,12 +296,12 @@ class BasePPOTrainer(ABC):
             generate_kwargs["temperature"] = temperature
             generate_kwargs["n_samples_per_prompt"] = n_samples_per_prompt
             samples_list = self.samples_generator.generate_samples(
-                all_prompts, all_labels, remote_reward_model=self.remote_reward_model, **generate_kwargs
+                all_prompts, all_mm_data, all_metadata, remote_reward_model=self.remote_reward_model, **generate_kwargs
             )
 
             # duplicate prompts and labels for each sample
             all_prompts = sum([s.prompts for s in samples_list], [])
-            all_labels = sum([s.labels for s in samples_list], [])
+            all_metadata = sum([s.metadata for s in samples_list], [])
 
             # Get rewards from samples, such as agent rewards or remote reward models
             rewards_list = []
@@ -459,13 +514,15 @@ class PPOTrainer(BasePPOTrainer):
 
             filtered_samples = []
             number_of_samples = 0
-            for _, rand_prompts, labels in self.prompts_dataloader:
-                remote_reward_model = self.remote_reward_model if self.args.dynamic_filtering else None
+            for _, rand_prompts, mm_data, metadata in self.prompts_dataloader:
                 rollout_samples = self.samples_generator.generate_samples(
-                    rand_prompts, labels, remote_reward_model=remote_reward_model, **self.generate_kwargs
+                    rand_prompts,
+                    mm_data,
+                    metadata,
+                    remote_reward_model=self.remote_reward_model,
+                    **self.generate_kwargs,
                 )
                 pbar.update()
-
                 # dynamic filtering
                 pass_rate = None
                 if self.args.dynamic_filtering:
@@ -520,8 +577,15 @@ class PPOTrainer(BasePPOTrainer):
                 if self.args.dynamic_filtering:
                     status["dynamic_filtering_pass_rate"] = pass_rate
                 logger.info(f"✨ Global step {steps}: {status}")
-                status["generated_samples"] = [sample0[0], experiences[0].info["reward"][0]]
-
+                status["generated_samples"] = []
+                for exp in experiences:
+                    sample = self.tokenizer.batch_decode(exp.sequences[0].unsqueeze(0), skip_special_tokens=True)[0]
+                    prompt = sample.split("\nassistant\n")[0]
+                    completion = (
+                        "\nassistant\n".join(sample.split("\nassistant\n")[1:]) if "\nassistant\n" in sample else ""
+                    )
+                    reward = exp.info["reward"][0]
+                    status["generated_samples"].append([prompt, completion, reward])
                 # logs/checkpoints
                 client_states = {
                     "global_step": steps,
