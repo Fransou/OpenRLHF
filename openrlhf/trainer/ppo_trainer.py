@@ -89,6 +89,7 @@ class BasePPOTrainer(ABC):
         if self.strategy.args.use_wandb:
             os.environ["WANDB_MODE"] = "offline"
             import wandb
+
             wandb.require("legacy-service")
             self._wandb = wandb
             run = self._wandb.init(
@@ -238,10 +239,9 @@ class BasePPOTrainer(ABC):
                 for k, v in logs_dict.items():
                     if k == "generated_samples":
                         # Record generated samples in TensorBoard using simple text format
-                        for line in v:
-                            prompt, completion, reward = line
-                            formatted_text = f"Prompt:\n{prompt}\n\nCompletion:\n{completion}\n\nReward: {float(reward):.4f}"
-                            self._tensorboard.add_text("train/generated_samples", formatted_text, global_step)
+                        text, reward = v
+                        formatted_text = f"Sample:\n{text}\n\nReward: {reward:.4f}"
+                        self._tensorboard.add_text("train/generated_samples", formatted_text, global_step)
                     else:
                         self._tensorboard.add_scalar(f"train/{k}", v, global_step)
 
@@ -280,12 +280,13 @@ class BasePPOTrainer(ABC):
         with torch.no_grad():
             # First collect all prompts and labels
             all_prompts = []
+            all_mm_data = []
             all_metadata = []
-            prompt_to_datasource = {}  # Dictionary to store mapping between prompts and their data sources
 
-            for datasources, prompts, metadata in eval_dataloader:
-                all_prompts.extend(prompts)
-                all_metadata.extend(metadata)
+            for datasources, prompt, mm_data, pixel_values, metadatas in eval_dataloader:
+                all_prompts.extend(prompt)
+                all_mm_data.extend(mm_data)
+                all_metadata.extend(metadatas)
                 # Create mapping for each prompt to its corresponding data source
                 for prompt, datasource in zip(prompts, datasources):
                     prompt_to_datasource[prompt] = datasource
@@ -295,7 +296,7 @@ class BasePPOTrainer(ABC):
             generate_kwargs["temperature"] = temperature
             generate_kwargs["n_samples_per_prompt"] = n_samples_per_prompt
             samples_list = self.samples_generator.generate_samples(
-                all_prompts, all_metadata, remote_reward_model=self.remote_reward_model, **generate_kwargs
+                all_prompts, all_mm_data, all_metadata, remote_reward_model=self.remote_reward_model, **generate_kwargs
             )
 
             # duplicate prompts and labels for each sample
@@ -513,15 +514,15 @@ class PPOTrainer(BasePPOTrainer):
 
             filtered_samples = []
             number_of_samples = 0
-            for _, rand_prompts, metadata in self.prompts_dataloader:
+            for _, rand_prompts, mm_data, metadata in self.prompts_dataloader:
                 rollout_samples = self.samples_generator.generate_samples(
                     rand_prompts,
+                    mm_data,
                     metadata,
                     remote_reward_model=self.remote_reward_model,
                     **self.generate_kwargs,
                 )
                 pbar.update()
-
                 # dynamic filtering
                 pass_rate = None
                 if self.args.dynamic_filtering:
@@ -556,6 +557,10 @@ class PPOTrainer(BasePPOTrainer):
                     number_of_samples = 0
 
                 experiences = self.experience_maker.make_experience_batch(rollout_samples)
+                sample0 = self.tokenizer.batch_decode(
+                    experiences[0].sequences[0].unsqueeze(0), skip_special_tokens=True
+                )
+                print(sample0)
                 refs = self.actor_model_group.async_run_method_batch(method_name="append", experience=experiences)
                 if self.critic_model_group is not None:
                     refs.extend(
@@ -581,7 +586,6 @@ class PPOTrainer(BasePPOTrainer):
                     )
                     reward = exp.info["reward"][0]
                     status["generated_samples"].append([prompt, completion, reward])
-
                 # logs/checkpoints
                 client_states = {
                     "global_step": steps,

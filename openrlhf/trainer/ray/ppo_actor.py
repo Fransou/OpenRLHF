@@ -202,15 +202,27 @@ class ActorPPOTrainer(ABC):
         sequences = experience.sequences
         action_mask = experience.action_mask
         attention_mask = experience.attention_mask
+        mm_data = experience.mm_data
+        if all(m is None for m in mm_data):
+            mm_data = None
         packed_seq_lens = None
         old_action_log_probs = experience.action_log_probs
         advantages = experience.advantages
         base_action_log_probs = experience.base_action_log_probs
 
+        if mm_data is not None:
+            if isinstance(mm_data, list):
+                if mm_data[0].ndim == 1:
+                    mm_data = torch.stack(mm_data, dim=0)
+                elif mm_data[0].ndim == 2:
+                    mm_data = torch.concatenate(mm_data, dim=0)
+                else:
+                    raise ValueError(f"Unsupported mm_data shape: {mm_data[0].shape}")
         # actor loss
-        action_log_probs, output = self.actor(
+        action_log_probs, output = self.actor(  # HERE
             sequences,
             action_mask,
+            mm_data=mm_data if mm_data is not None else None,
             attention_mask=attention_mask,
             return_output=True,
             ring_attn_group=self.strategy.ring_attn_group,
@@ -371,7 +383,7 @@ class PolicyModelActor(BaseModelActor):
                 os.environ["NCCL_CUMEM_ENABLE"] = "0"
 
         self._setup_distributed(strategy)
-
+        print("Loading Actor model...")
         actor = Actor(
             pretrain,
             use_flash_attention_2=strategy.args.flash_attn,
@@ -385,9 +397,10 @@ class PolicyModelActor(BaseModelActor):
             packing_samples=strategy.args.packing_samples,
             temperature=strategy.args.temperature,
             use_liger_kernel=strategy.args.use_liger_kernel,
+            multimodal=strategy.args.multimodal,
         )
         strategy.print(actor)
-
+        print("Actor model loaded.")
         # configure tokenizer
         self.tokenizer = get_tokenizer(
             pretrain, actor.model, "left", strategy, use_fast=not strategy.args.disable_fast_tokenizer
@@ -401,14 +414,17 @@ class PolicyModelActor(BaseModelActor):
                 load_in_4bit=strategy.args.load_in_4bit,
                 ds_config=strategy.get_ds_eval_config(offload=True),
                 packing_samples=strategy.args.packing_samples,
+                multimodal=strategy.args.multimodal,
             )
         else:
             ema_model = None
 
         # configure optimizer
+        print("Configuring actor optimizer...")
         actor_optim = strategy.create_optimizer(
             actor, lr=args.actor_learning_rate, betas=strategy.args.adam_betas, weight_decay=args.l2
         )
+        print("Actor optimizer configured.")
 
         actor_scheduler = get_scheduler(
             args.lr_scheduler,
@@ -450,6 +466,7 @@ class PolicyModelActor(BaseModelActor):
             offload_deepspeed_states(self.actor.model)
 
         # configure Trainer
+        print("Configuring Actor PPO Trainer...")
         self.trainer = ActorPPOTrainer(
             strategy,
             self.actor,
@@ -489,15 +506,30 @@ class PolicyModelActor(BaseModelActor):
         action_mask: Optional[Union[int, list[int]]] = None,
         attention_mask: Optional[torch.Tensor] = None,
         packed_seq_lens=None,
+        mm_data=None,
     ) -> torch.Tensor:
         """Generates actor values."""
         device = torch.cuda.current_device()
         self.actor.eval()
+        if mm_data is not None:
+            mm_data = [m for m in mm_data if m is not None]  # filter out None values
+            if mm_data == []:
+                mm_data = None
+        if mm_data is not None:
+            if isinstance(mm_data, list):
+                if mm_data[0].ndim == 1:
+                    mm_data = torch.stack(mm_data, dim=0)
+                elif mm_data[0].ndim == 2:
+                    mm_data = torch.concatenate(mm_data, dim=0)
+                else:
+                    raise ValueError(f"Unsupported mm_data shape: {mm_data[0].shape}")
+            mm_data = mm_data.to(device)
         with torch.no_grad():
             action_log_probs = self.actor(
                 sequences.to(device),
                 action_mask.to(device),
                 attention_mask.to(device),
+                mm_data=mm_data,
                 ring_attn_group=self.strategy.ring_attn_group,
             )
         self.actor.train()  # reset model state

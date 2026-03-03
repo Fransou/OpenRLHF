@@ -120,12 +120,13 @@ def batch_generate_vllm(args):
         print(f"Found {len(existing_prompt_ids)} existing prompt_ids in {args.output_path + '.jsonl'}")
         # filter prompts_dataset to remove existing prompt_ids
         prompts_dataset = [
-            item for item in prompts_dataset if item[2].get("prompt_id", None) not in existing_prompt_ids
+            item for item in prompts_dataset if item[3].get("prompt_id", None) not in existing_prompt_ids
         ]
         print(f"{len(prompts_dataset)} prompts left after filtering existing prompt_ids")
+
     prompts = []
     metadatas = []
-    for _, prompt, metadata in prompts_dataset:
+    for _, prompt, _, metadata in prompts_dataset:
         prompts.append(TokensPrompt(prompt_token_ids=prompt))
         metadatas.append(metadata)
 
@@ -256,6 +257,12 @@ if __name__ == "__main__":
         default=False,
     )
 
+    # Multimodal parameters
+    parser.add_argument("--multimodal", action="store_true", default=False)
+
+    # System prompt?
+    parser.add_argument("--system_prompt", type=str, default=None)
+
     parser.add_argument(
         "--save_prop",
         type=int,
@@ -300,3 +307,9 @@ if __name__ == "__main__":
         raise NotImplementedError
     else:
         print("Invalid or missing '--eval_task' argument. Please specify either 'generate' or 'rm'.")
+
+    if args.use_ms:
+        from modelscope.utils.hf_util import patch_hub
+
+        # Patch hub to download models from modelscope to speed up.
+        patch_hub()
