@@ -145,6 +145,12 @@ if __name__ == "__main__":
         "--ckpt_path", "-c", type=str, required=True, help="Path to the directory containing model checkpoints"
     )
     parser.add_argument("--dashboard_port", type=int, default=8265, help="Port for Ray dashboard")
+
+    parser.add_argument(
+        "--merge_lora",
+        action="store_true",
+        help="Whether to merge LoRA weights with the base model before evaluation (if applicable). This is required if the checkpoints are LoRA adapters and the batch inference script expects a full model.",
+    )
     args = parser.parse_args()
 
     path = Path(args.ckpt_path)
@@ -161,7 +167,8 @@ if __name__ == "__main__":
         print(f"Evaluating checkpoint: {ckpt}")
 
         # Merge LoRA weights with base model and save to SLURM_TMPDIR
-        merged_ckpt = merge_lora_to_base(ckpt)
+        if args.merge_lora:
+            merged_ckpt = merge_lora_to_base(ckpt)
 
         # Free CUDA memory after merging
         clear_cuda_memory()
