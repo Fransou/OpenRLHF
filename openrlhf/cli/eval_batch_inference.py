@@ -151,6 +151,13 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to merge LoRA weights with the base model before evaluation (if applicable). This is required if the checkpoints are LoRA adapters and the batch inference script expects a full model.",
     )
+    parser.add_argument(
+        "--subset",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Optional list of checkpoint steps to evaluate. If provided, only checkpoints with these steps (e.g. global_step100_hf -> 100) will be evaluated.",
+    )
     args = parser.parse_args()
 
     path = Path(args.ckpt_path)
@@ -163,6 +170,21 @@ if __name__ == "__main__":
             int(re.search(r"global_step(\d+)_hf", p.name).group(1)) if re.search(r"global_step(\d+)_hf", p.name) else 0
         ),
     )
+
+    if args.subset:
+        subset_steps = set(args.subset)
+        checkpoints = [
+            ckpt
+            for ckpt in checkpoints
+            if (
+                int(re.search(r"global_step(\d+)_hf", ckpt.name).group(1))
+                if re.search(r"global_step(\d+)_hf", ckpt.name)
+                else 0
+            )
+            in subset_steps
+        ]
+        print(f"Filtered checkpoints to steps: {subset_steps}. Found {len(checkpoints)} matching checkpoints.")
+
     for ckpt in checkpoints:
         print(f"Evaluating checkpoint: {ckpt}")
 
