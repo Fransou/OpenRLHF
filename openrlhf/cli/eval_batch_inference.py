@@ -191,6 +191,8 @@ if __name__ == "__main__":
         # Merge LoRA weights with base model and save to SLURM_TMPDIR
         if args.merge_lora:
             merged_ckpt = merge_lora_to_base(ckpt)
+        else:
+            merged_ckpt = ckpt
 
         # Free CUDA memory after merging
         clear_cuda_memory()
