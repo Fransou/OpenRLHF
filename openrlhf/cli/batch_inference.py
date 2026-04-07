@@ -31,11 +31,9 @@ def _worker_vllm_generate(
     prompts: list,
     metadatas: list,
     sampling_params: SamplingParams,
-    save_prop: int = 10,
+    batch_size: int = 10,
     use_tqdm: bool = False,
 ):
-    # Divide prompts into batches and yield
-    batch_size = max(1, len(prompts) // save_prop)
     for i in range(0, len(prompts), batch_size):
         batch_prompts = prompts[i : i + min(batch_size, len(prompts) - i)]
         batch_metadatas = metadatas[i : i + min(batch_size, len(metadatas) - i)]
@@ -105,6 +103,9 @@ def batch_generate_vllm(args):
     prompts_dataset = PromptDataset(
         prompts_data, tokenizer, dummy_strategy, input_template=args.input_template, return_tokens=True
     )
+    # Find the batch_size
+    batch_size = max(100,int(args.save_prop * len(prompts_dataset)))
+
     # if outpout path exists, open it and extract prompt_id to avoid duplicate generation
     if os.path.exists(args.output_path + ".jsonl"):
         existing_prompt_ids_count = {}
@@ -161,7 +162,7 @@ def batch_generate_vllm(args):
             n=N,
         )
     for batched_outputs, batched_metadatas in _worker_vllm_generate(
-        llm, prompts, metadatas, sampling_params, save_prop=args.save_prop, use_tqdm=True
+        llm, prompts, metadatas, sampling_params, batch_size=batch_size, use_tqdm=True
     ):
         output_dataset = []
         for output, metadata in zip(batched_outputs, batched_metadatas):
