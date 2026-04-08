@@ -105,6 +105,7 @@ def batch_generate_vllm(args):
     )
     # Find the batch_size
     batch_size = max(100,int(args.save_prop * len(prompts_dataset)))
+    print(batch_size)
 
     # if outpout path exists, open it and extract prompt_id to avoid duplicate generation
     if os.path.exists(args.output_path + ".jsonl"):
