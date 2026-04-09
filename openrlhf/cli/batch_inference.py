@@ -35,6 +35,7 @@ def _worker_vllm_generate(
     use_tqdm: bool = False,
 ):
     for i in range(0, len(prompts), batch_size):
+        print(f"Running {len(prompts)} prompts in batch {i}")
         batch_prompts = prompts[i : i + min(batch_size, len(prompts) - i)]
         batch_metadatas = metadatas[i : i + min(batch_size, len(metadatas) - i)]
         outputs = llm.generate(batch_prompts, sampling_params, use_tqdm=use_tqdm)
