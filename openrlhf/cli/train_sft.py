@@ -2,6 +2,7 @@ import argparse
 import math
 import os
 from datetime import datetime
+
 import yaml
 from transformers.trainer import get_scheduler
 
@@ -17,6 +18,7 @@ def load_config_from_yaml(config_path):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     return config
+
 
 def train(args):
     # configure strategy
@@ -263,7 +265,6 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, default=None, help="Path to YAML config file")
 
     args = parser.parse_args()
-
 
     if args.config:
         print(f"Loading configuration from: {args.config}")
