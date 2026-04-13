@@ -105,7 +105,7 @@ def batch_generate_vllm(args):
         prompts_data, tokenizer, dummy_strategy, input_template=args.input_template, return_tokens=True
     )
     # Find the batch_size
-    batch_size = max(10,len(prompts_dataset) // args.save_prop)
+    batch_size = max(10, len(prompts_dataset) // args.save_prop)
     print(batch_size)
 
     # if outpout path exists, open it and extract prompt_id to avoid duplicate generation
