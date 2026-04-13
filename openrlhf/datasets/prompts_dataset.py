@@ -63,7 +63,7 @@ def preprocess_data(
                 print("Applied chat template with generation prompt.")
         except ValueError:
             chat = apply_chat_template(chat, tokenize=return_tokens, return_dict=multimodal, tools=tools)
-                print("Applied chat template.")
+            print("Applied chat template.")
 
         if return_tokens:
             prompt = chat
