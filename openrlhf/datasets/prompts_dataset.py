@@ -51,11 +51,19 @@ def preprocess_data(
                 chat = [s_prompt] + chat
         # Apply chat template
         try:
-            chat = apply_chat_template(
-                chat, tokenize=return_tokens, add_generation_prompt=True, return_dict=multimodal, tools=tools
-            )
+            try:
+                chat = apply_chat_template(
+                    chat, tokenize=return_tokens, add_generation_prompt=True, return_dict=multimodal, tools=tools,enable_thinking=True
+                )
+                print("Applied chat template with generation prompt and thinking mode.")
+            except ValueError:
+                chat = apply_chat_template(
+                    chat, tokenize=return_tokens, add_generation_prompt=True, return_dict=multimodal, tools=tools
+                )
+                print("Applied chat template with generation prompt.")
         except ValueError:
             chat = apply_chat_template(chat, tokenize=return_tokens, return_dict=multimodal, tools=tools)
+                print("Applied chat template.")
 
         if return_tokens:
             prompt = chat
