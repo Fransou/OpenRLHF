@@ -147,7 +147,7 @@ def batch_generate_vllm(args):
             temperature=args.temperature,
             repetition_penalty=args.repetition_penalty,
             skip_special_tokens=skip_spe_toks,
-            truncate_prompt_tokens=args.prompt_max_len,
+            # truncate_prompt_tokens=args.prompt_max_len,
             include_stop_str_in_output=True,
             stop_token_ids=stop_tokens_ids,
             n=N,
@@ -159,7 +159,7 @@ def batch_generate_vllm(args):
             temperature=args.temperature,
             repetition_penalty=args.repetition_penalty,
             skip_special_tokens=skip_spe_toks,
-            truncate_prompt_tokens=args.prompt_max_len,
+            # truncate_prompt_tokens=args.prompt_max_len,
             include_stop_str_in_output=True,
             n=N,
         )
